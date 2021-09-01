@@ -1,0 +1,134 @@
+class ZCL_STATS definition
+  public
+  final
+  create public .
+
+public section.
+
+  types:
+    begin of gy_cds_view_details,
+      cdsview type ddddlsrc-ddlname,
+      cdsviewdescription type ddddlsrct-ddtext,
+      sqlview type ddldependency-objectname,
+      keyflag type dd03l-keyflag,
+      field type dd03l-fieldname,
+      fieldposition type dd03l-position,
+      fielddescription type dd04t-ddtext,
+      dataelement type dd03l-rollname,
+      fielddomain type dd03l-domname,
+      datatype type dd03l-datatype,
+      length type dd03l-leng,
+      decimals type dd03l-decimals,
+      reffield type dd03l-reffield,
+      checktable type dd03l-checktable,
+      basetable type dd27s-tabname,
+      basetabclass type dd02l-tabclass,
+      basefield type dd27s-fieldname,
+      coretable type dd27s-tabname,
+      coretabclass type dd02l-tabclass,
+      corefield type dd27s-fieldname,
+    end of gy_cds_view_details.
+
+  types:
+    begin of gy_cdsview_list,
+      name type ddddlsrc-ddlname,
+    end of gy_cdsview_list.
+
+  data:
+    gt_cds_view_details type table of gy_cds_view_details,
+    gs_cds_view_details like line of gt_cds_view_details,
+    gt_cds_list type table of gy_cdsview_list,
+    gs_cds_list like line of gt_cds_list.
+
+  methods GET_CDS_VIEW_DETAILS .
+
+protected section.
+private section.
+ENDCLASS.
+
+
+CLASS ZCL_STATS IMPLEMENTATION.
+
+method GET_CDS_VIEW_DETAILS.
+
+*-----------------------------------------------------------------------
+* Function:        Provide list of CDS views, return CDS view details
+* Notes:           -
+* Created by:      Connor Dijst
+* Creation date:   27/11/2019
+* Changes:         -
+*-----------------------------------------------------------------------
+
+    types: begin of ty_core_table,
+             viewname type dd27s-viewname,
+             viewfield type dd27s-viewfield,
+             tabname type dd27s-tabname,
+             tabclass type dd02l-tabclass,
+             fieldname type dd27s-fieldname,
+           end of ty_core_table.
+
+    data: lt_core_table type table of ty_core_table,
+          ls_core_table like line of lt_core_table,
+
+          l_count type i,
+          l_table type dd27s-tabname,
+          l_field type dd27s-fieldname,
+          l_tabclass type dd02l-tabclass.
+
+    select x~ddlname y~ddtext z~objectname c~keyflag c~fieldname
+           c~position d~scrtext_l c~rollname c~domname c~datatype
+           c~leng c~decimals c~reffield c~checktable e~tabname f~tabclass e~fieldname
+    into table gt_cds_view_details
+    from ddddlsrc as x
+      inner join ddddlsrct as y on ( y~ddlname = x~ddlname and y~as4local = x~as4local )
+      inner join ddldependency as z on ( z~ddlname = x~ddlname and z~objecttype = 'VIEW' )
+      inner join dd03l as c on ( c~tabname  = z~objectname and c~as4local = 'A' and c~as4vers  = '0000' )
+      left outer join dd04t as d on ( d~rollname = c~rollname and d~as4local   = c~as4local and d~as4vers = c~as4vers and d~ddlanguage = 'E' )
+      inner join dd27s as e on ( e~viewname = z~objectname and e~viewfield = c~fieldname )
+      left outer join dd02l as f on ( f~tabname = e~tabname )
+    for all entries in gt_cds_list
+    where x~ddlname = gt_cds_list-name.
+
+* step 3) loop through each CDS view and field combination and determine
+*         the base and core table and fields
+    field-symbols: <fs_cds_view_details> type gy_cds_view_details.
+
+    loop at gt_cds_view_details assigning <fs_cds_view_details>.
+        l_table = <fs_cds_view_details>-basetable.
+        l_field = <fs_cds_view_details>-basefield.
+        l_tabclass = <fs_cds_view_details>-basetabclass.
+        l_count = 1.
+
+        while l_tabclass = 'VIEW'.
+            l_count = l_count + 1.
+
+            select a~viewname a~viewfield a~tabname b~tabclass a~fieldname
+            into table lt_core_table
+            from dd27s as a
+                inner join dd02l as b on a~tabname = b~tabname
+            where viewname = l_table
+              and viewfield = l_field.
+
+            read table lt_core_table into ls_core_table index 1.
+
+            if ( ls_core_table is initial or l_count > 50 ).
+                l_tabclass = 'xxxx'.
+            else.
+                l_tabclass = ls_core_table-tabclass.
+            endif.
+
+            l_table = ls_core_table-tabname.
+            l_field = ls_core_table-fieldname.
+
+            if l_count > 50.
+                l_tabclass = 'xxxx'.
+            endif.
+        endwhile.
+
+        <fs_cds_view_details>-coretable = l_table.
+        <fs_cds_view_details>-coretabclass = l_tabclass.
+        <fs_cds_view_details>-corefield = l_field.
+    endloop.
+endmethod.
+
+ENDCLASS.
