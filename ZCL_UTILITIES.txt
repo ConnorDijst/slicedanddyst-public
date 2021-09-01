@@ -1,0 +1,106 @@
+class ZCL_UTILITIES definition
+  public
+  final
+  create public .
+
+public section.
+
+  class-methods CLEAN_UP_PROMPT_LIST
+    changing
+      !C_T_LIST type ANY .
+
+  class-methods GENERATE_ALV_GRID
+    importing
+      !I_CALLBACK_PROGRAM type SY-REPID
+    changing
+      !C_T_ALV_RESULTS type ANY .
+
+PROTECTED SECTION.
+PRIVATE SECTION.
+ENDCLASS.
+
+CLASS ZCL_UTILITIES IMPLEMENTATION.
+
+method clean_up_prompt_list.
+
+*-----------------------------------------------------------------------
+* Function:        Receive list of prompt values, remove sign and
+*                  option from prompt list values string
+* Notes:           -
+* Created by:      Connor Dijst
+* Creation date:   28/11/2019
+* Changes:         -
+*-----------------------------------------------------------------------
+
+  field-symbols: <fs_table> type standard table,
+                 <fs_record> type any.
+
+  if ( c_t_list is not initial ).
+    assign c_t_list to <fs_table>.
+
+    loop at <fs_table> assigning <fs_record>.
+      condense <fs_record>.
+      translate <fs_record> to upper case.
+      replace 'IEQ' in <fs_record> with ''.
+    endloop.
+
+    delete adjacent duplicates from <fs_table>.
+  endif.
+
+endmethod.
+
+method GENERATE_ALV_GRID.
+
+*-----------------------------------------------------------------------
+* Function:        Receive the results set and display using ALV grid
+* Notes:           -
+* Created by:      Connor Dijst
+* Creation date:   28/11/2019
+* Changes:         -
+*-----------------------------------------------------------------------
+
+  data: lt_alv_header type slis_t_fieldcat_alv,
+        ls_alv_header type slis_fieldcat_alv,
+        l_field_name type char50.
+
+  field-symbols: <fs_table> type standard table,
+                 <fs_record> type any.
+
+  if ( c_t_alv_results is not initial ).
+    assign c_t_alv_results to <fs_table>.
+
+* step 1) generate ALV header reading the received table columns
+  " 1.1) assign first rows of table to a structure which will read to determine the
+  "      table fields
+    loop at <fs_table> assigning <fs_record>.
+      exit.
+    endloop.
+
+  " 1.2) determine table field and generate ALV header
+    data: r_descr type ref to cl_abap_structdescr,
+          wa_comp type abap_compdescr.
+
+    r_descr ?= cl_abap_typedescr=>describe_by_data( <fs_record> ).
+
+    loop at r_descr->components into wa_comp.
+      l_field_name = wa_comp-name.
+      ls_alv_header-fieldname = l_field_name.
+      ls_alv_header-ref_tabname = l_field_name.
+      ls_alv_header-seltext_m = l_field_name.
+      append ls_alv_header to lt_alv_header.
+    endloop.
+
+* step 2) write ALV grid result
+    call function 'REUSE_ALV_GRID_DISPLAY'
+      exporting
+        i_callback_program = i_callback_program
+        it_fieldcat = lt_alv_header
+      tables
+        t_outtab = <fs_table>[].
+  else.
+    write 'No data'.
+  endif.
+
+endmethod.
+
+ENDCLASS.
