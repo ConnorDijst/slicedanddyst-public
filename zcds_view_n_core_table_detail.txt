@@ -1,0 +1,102 @@
+*&---------------------------------------------------------------------*
+*& Report zcds_view_n_core_table_detail
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zcds_view_n_core_table_detail.
+
+*-----------------------------------------------------------------------
+* Function:        Receive list of CDS views and return CDS view
+*                  details, and for each field its fields on its base
+*                  and core table and field details
+* Notes:           -
+* Created by:      Connor Dijst
+* Creation date:   16/07/2021
+* Changes:         -
+*-----------------------------------------------------------------------
+
+    tables: trdir.
+
+    selection-screen: begin of block a01 with frame title a01.
+      select-options p_cds for trdir-name no intervals.
+      parameters: p_tbl_ex type rs_bool default rs_c_true.
+      parameters p_rad1 radiobutton group rb1. " show all details
+      parameters p_rad2 radiobutton group rb1. " show details for BW info objects
+    selection-screen: end of block a01.
+
+    initialization.
+        %_p_cds_%_app_%-text = 'CDS View'.
+        %_p_tbl_ex_%_app_%-text = 'Filter out technical tables'.
+        %_p_rad1_%_app_%-text = 'Show all details'.
+        %_p_rad2_%_app_%-text = 'Details for BW iobj mass generation'.
+
+    start-of-selection.
+
+    types:
+        begin of ty_cds_view_det_for_bw_iobj,
+            cdsview type ddddlsrc-ddlname,
+            cdsviewdescription type ddddlsrct-ddtext,
+            fielddescription type dd04t-ddtext,
+            field type dd03l-fieldname,
+            datatype type dd03l-datatype,
+            length type dd03l-leng,
+            decimals type dd03l-decimals,
+            reffield type dd03l-reffield,
+        end of ty_cds_view_det_for_bw_iobj.
+
+    data: lt_cds_view_det_for_bw_iobj type table of ty_cds_view_det_for_bw_iobj,
+          ls_cds_view_det_for_bw_iobj like line of lt_cds_view_det_for_bw_iobj,
+          lr_tabl_exclusions type range of string,
+          lr_s_tabl_excl like line of lr_tabl_exclusions.
+
+    data l_cls_stats type ref to zcl_stats.
+    create object l_cls_stats.
+
+    data l_cls_utilities type ref to zcl_utilities.
+    create object l_cls_utilities.
+
+    field-symbols: <fs_cds_view_details> type any.
+
+*     step 1) assign specified list of CDS view to a variable
+    l_cls_stats->gt_cds_list[] = p_cds[].
+
+    l_cls_utilities->clean_up_prompt_list(
+      changing
+        c_t_list = l_cls_stats->gt_cds_list ).
+
+*     step 2) capture CDS view details
+    l_cls_stats->get_cds_view_details(  ).
+
+    " 2.1) remove line from excluded tables
+    if p_tbl_ex = 'X'.
+        lr_s_tabl_excl-sign = 'I'.
+        lr_s_tabl_excl-option = 'CP'.
+        lr_s_tabl_excl-low = 'DDD*'.
+        append lr_s_tabl_excl to lr_tabl_exclusions.
+
+        delete l_cls_stats->gt_cds_view_details where coretable in lr_tabl_exclusions.
+    endif.
+
+*     step 3) write the results to the screen
+    if p_rad2 = 'X'. " only write BW relevant details to the screen
+        loop at l_cls_stats->gt_cds_view_details into l_cls_stats->gs_cds_view_details.
+            move-corresponding l_cls_stats->gs_cds_view_details to ls_cds_view_det_for_bw_iobj.
+            ls_cds_view_det_for_bw_iobj-field = l_cls_stats->gs_cds_view_details-corefield.
+            append ls_cds_view_det_for_bw_iobj to lt_cds_view_det_for_bw_iobj.
+        endloop.
+
+        sort lt_cds_view_det_for_bw_iobj by field fielddescription.
+        delete adjacent duplicates from lt_cds_view_det_for_bw_iobj comparing field fielddescription.
+
+        l_cls_utilities->generate_alv_grid(
+            exporting
+                i_callback_program = sy-repid
+            changing
+                c_t_alv_results = lt_cds_view_det_for_bw_iobj ).
+    else. " write all details
+        l_cls_utilities->generate_alv_grid(
+            exporting
+                i_callback_program = sy-repid
+            changing
+                c_t_alv_results = l_cls_stats->gt_cds_view_details ).
+    endif.
